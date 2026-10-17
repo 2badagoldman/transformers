@@ -259,6 +259,40 @@ class Qwen2VLImageProcessingTest(ImageProcessingTestMixin, unittest.TestCase):
                 # Just checking that it doesn't raise an error
                 image_processor(image_inputs, return_tensors="pt")
 
+    def test_only_max_pixels(self):
+        # Regression test: passing only `max_pixels` must fill `shortest_edge` from the default
+        max_pixels = 56 * 56
+        image = np.random.randint(0, 256, (3, 224, 224), dtype=np.uint8)
+        for image_processing_class in self.image_processing_classes.values():
+            default_min_pixels = image_processing_class().size["shortest_edge"]
+            image_processor = image_processing_class(max_pixels=max_pixels)
+            self.assertEqual(image_processor.size["shortest_edge"], default_min_pixels)
+            self.assertEqual(image_processor.size["longest_edge"], max_pixels)
+            outputs = image_processor(image, return_tensors="pt")
+            for t, h, w in outputs.image_grid_thw.tolist():
+                self.assertLessEqual(h * w * image_processor.patch_size**2, max_pixels)
+            # call-time kwarg
+            with self.assertWarns(FutureWarning):
+                outputs = image_processing_class()(image, max_pixels=max_pixels, return_tensors="pt")
+            for t, h, w in outputs.image_grid_thw.tolist():
+                self.assertLessEqual(h * w * image_processor.patch_size**2, max_pixels)
+
+    def test_only_min_pixels(self):
+        min_pixels = 112 * 112
+        image = np.random.randint(0, 256, (3, 28, 28), dtype=np.uint8)
+        for image_processing_class in self.image_processing_classes.values():
+            default_max_pixels = image_processing_class().size["longest_edge"]
+            image_processor = image_processing_class(min_pixels=min_pixels)
+            self.assertEqual(image_processor.size["longest_edge"], default_max_pixels)
+            self.assertEqual(image_processor.size["shortest_edge"], min_pixels)
+            outputs = image_processor(image, return_tensors="pt")
+            for t, h, w in outputs.image_grid_thw.tolist():
+                self.assertGreaterEqual(h * w * image_processor.patch_size**2, min_pixels)
+            with self.assertWarns(FutureWarning):
+                outputs = image_processing_class()(image, min_pixels=min_pixels, return_tensors="pt")
+            for t, h, w in outputs.image_grid_thw.tolist():
+                self.assertGreaterEqual(h * w * image_processor.patch_size**2, min_pixels)
+
     @require_vision
     @require_torch
     def test_backends_equivalence(self):
