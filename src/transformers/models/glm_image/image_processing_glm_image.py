@@ -139,6 +139,11 @@ class GlmImageImageProcessor(TorchvisionBackend):
             )
 
             size_dict = dict(size) if isinstance(size, (dict, SizeDict)) else {}
+            if min_pixels is None or max_pixels is None:
+                # fill the missing bound from the current size so the resulting size dict is valid
+                for key, default in dict(self.size).items():
+                    if key in ("shortest_edge", "longest_edge") and size_dict.get(key) is None:
+                        size_dict[key] = default
             if min_pixels is not None:
                 size_dict["shortest_edge"] = min_pixels
             if max_pixels is not None:

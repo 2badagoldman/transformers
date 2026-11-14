@@ -408,6 +408,26 @@ class Qwen2VLVideoProcessingTest(VideoProcessingTestMixin, unittest.TestCase):
             expected_output_video_shape = [320, 1176]
             self.assertListEqual(list(processed.pixel_values_videos.shape), expected_output_video_shape)
 
+    def test_only_one_pixel_bound(self):
+        # Regression test: passing only `min_pixels` or only `max_pixels` must not raise
+        video = [np.random.randint(0, 256, (112, 112, 3), dtype=np.uint8) for _ in range(4)]
+        for video_processing_class in self.video_processor_list:
+            default_size = video_processing_class().size
+            processor = video_processing_class(max_pixels=56 * 56)
+            self.assertEqual(processor.size["shortest_edge"], default_size["shortest_edge"])
+            self.assertEqual(processor.size["longest_edge"], 56 * 56)
+            outputs = processor(video, return_tensors="pt")
+            for t, h, w in outputs.video_grid_thw.tolist():
+                self.assertLessEqual(h * w * processor.patch_size**2, 56 * 56)
+
+            processor = video_processing_class(min_pixels=28 * 28)
+            self.assertEqual(processor.size["shortest_edge"], 28 * 28)
+            self.assertEqual(processor.size["longest_edge"], default_size["longest_edge"])
+            processor(video, return_tensors="pt")
+
+            with self.assertWarns(FutureWarning):
+                video_processing_class()(video, max_pixels=56 * 56, return_tensors="pt")
+
     def _process_frames(self, video_processing_class, num_frames, size, frame_size=256, **processor_kwargs):
         video_processor_dict = self.video_processor_dict.copy()
         video_processor_dict.pop("min_pixels", None)
